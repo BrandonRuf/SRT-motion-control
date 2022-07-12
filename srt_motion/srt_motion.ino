@@ -12,7 +12,7 @@
 #define BAUD 115200
 
 /** Motor control pins **/
-#define M1FLT_PIN 2
+#define M1FLT_PIN 2 
 #define M2FLT_PIN 3
 #define M1PWM_PIN 4
 #define M2PWM_PIN 5
@@ -23,7 +23,7 @@
 
 #define REVERSING_DELAY 0  // Motor direction reversing delay (in milliseconds) 
 
-bool motor_fault[2];
+bool  motor_fault[2];
 float acceleration[3];
 float rotation[3];
 float bfield[3];
@@ -47,23 +47,29 @@ boolean newData = false;          // Flag used to indicate if new data has been 
 char * strtok_index;              // Used by strtok() as an index
 
 void initialize(){
-  digitalWrite(M1EN_PIN, LOW);
-  digitalWrite(M2EN_PIN, LOW);
-  
+
+  /* Directions */
   digitalWrite(M1DIR_PIN, LOW);
   digitalWrite(M2DIR_PIN, LOW);
-      
+
+  /* PWM pins held HIGH, can be PWM'd for speed control */
   digitalWrite(M1PWM_PIN, HIGH);
-  digitalWrite(M2PWM_PIN, HIGH);             
+  digitalWrite(M2PWM_PIN, HIGH);   
+
+  /* Enable pins, turn a given motor on when pull HIGH */
+  digitalWrite(M1EN_PIN, LOW);
+  digitalWrite(M2EN_PIN, LOW);
 }
 
 void setup() {
   Serial.begin(BAUD);               
 
-  /* Setup Motor control pins */
+  /* Fault pins must be pulled up to arduino's logic level */
   pinMode(M1FLT_PIN, INPUT_PULLUP); 
   pinMode(M2FLT_PIN, INPUT_PULLUP); 
 
+  /* Each driver output is controlled by a
+   * PWM, Enable, and Direction pin. */
   pinMode(M1PWM_PIN, OUTPUT); 
   pinMode(M2PWM_PIN, OUTPUT); 
   
@@ -76,7 +82,30 @@ void setup() {
   /* Enable MEMs sensors */
   lsm6dsoxSensor.begin_I2C();
   lis3mdl       .begin_I2C(0x1E);
+  
   initialize();                       // Initialize relevant variables 
+
+  lsm6dsoxSensor.setGyroRange(LSM6DS_GYRO_RANGE_125_DPS);
+  /*Serial.print("Gyro range set to: ");
+  switch (lsm6dsoxSensor.getGyroRange()) {
+  case LSM6DS_GYRO_RANGE_125_DPS:
+    Serial.println("125 degrees/s");
+    break;
+  case LSM6DS_GYRO_RANGE_250_DPS:
+    Serial.println("250 degrees/s");
+    break;
+  case LSM6DS_GYRO_RANGE_500_DPS:
+    Serial.println("500 degrees/s");
+    break;
+  case LSM6DS_GYRO_RANGE_1000_DPS:
+    Serial.println("1000 degrees/s");
+    break;
+  case LSM6DS_GYRO_RANGE_2000_DPS:
+    Serial.println("2000 degrees/s");
+    break;
+  case ISM330DHCX_GYRO_RANGE_4000_DPS:
+    break; // unsupported range for the DSOX
+  }*/
 }
 
 void loop() {
