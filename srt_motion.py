@@ -20,8 +20,7 @@ except: _comports = None
 _p = _traceback.print_last
 _g = _egg.gui
 
-_dac_bit_depth = 12 
-_dac_voltage   = 5.
+RAD_TO_DEGREES = 180./_n.pi
 
 _debug_enabled = True
 
@@ -108,6 +107,8 @@ class rtd_monitor(_g.BaseObject):
         # Create Timer for collecting data 
         self.timer = _g.Timer(interval_ms=500, single_shot=False)
         self.timer.signal_tick.connect(self._timer_tick)
+        
+        self.r_x_offset,self.r_y_offset, self.r_z_offset = 0,0,0
 
         # Show the GUI!
         self.window.show(block)
@@ -123,12 +124,18 @@ class rtd_monitor(_g.BaseObject):
         t = _time.time()-self.t0
         T, a_x, a_y, a_z, r_x, r_y, r_z, b_x, b_y, b_z = self.api.get_params()
         
+        # Convert to degrees/s
+        r_x, r_y, r_z = r_x*RAD_TO_DEGREES, r_y*RAD_TO_DEGREES, r_z*RAD_TO_DEGREES
+        
+        r_x -= self.r_x_offset
+        r_y -= self.r_y_offset
+        r_z -= self.r_z_offset
+        
         self.number_temperature.set_value(T)
         
         self.ax.set_value(a_x)
         self.ay.set_value(a_y)
         self.az.set_value(a_z)
-        
         self.acc_tot.set_value(_n.sqrt(a_x**2+a_y**2 +a_z**2))
         
         self.rx.set_value(r_x)
@@ -500,29 +507,33 @@ class rtd_monitor(_g.BaseObject):
         self.grid_acc1.add(_g.Label('Acceleration:'), alignment=1).set_style(style_1)
         self.acc_tot = self.grid_acc1.add(_g.NumberBox(suffix='m/s', decimals = 4), alignment=1).set_width(200).set_style(style_5)
         self.grid_acc2.add(_g.Label('x:'), alignment=1).set_style(style_5)
-        self.ax = self.grid_acc2.add(_g.NumberBox(suffix='m/s'), alignment=1).set_width(175).set_style(style_6)
+        self.ax = self.grid_acc2.add(_g.NumberBox(suffix='m/s'), alignment=1).set_width(200).set_style(style_6)
         self.grid_acc2.add(_g.Label('y:'), alignment=1).set_style(style_5)
-        self.ay = self.grid_acc2.add(_g.NumberBox(suffix='m/s'), alignment=1).set_width(175).set_style(style_6)
+        self.ay = self.grid_acc2.add(_g.NumberBox(suffix='m/s'), alignment=1).set_width(200).set_style(style_6)
         self.grid_acc2.add(_g.Label('z:'), alignment=1).set_style(style_5)
-        self.az = self.grid_acc2.add(_g.NumberBox(suffix='m/s'), alignment=1).set_width(175).set_style(style_6)
+        self.az = self.grid_acc2.add(_g.NumberBox(suffix='m/s'), alignment=1).set_width(200).set_style(style_6)
         
         self.grid_gyro1.add(_g.Label('Rotation:'), alignment=1).set_style(style_1)
-        self.gyro_tot = self.grid_gyro1.add(_g.NumberBox(suffix='°/s', decimals = 4), alignment=1).set_width(200).set_style(style_5)
+        self.gyro_tot = self.grid_gyro1.add(_g.NumberBox(suffix='°/s', dec=True,minStep=.001,decimals=4), alignment=1).set_width(200).set_style(style_5)
+        self.button_zero_gyro = self.grid_gyro1.add(_g.Button('Zero'))
         self.grid_gyro2.add(_g.Label('x:'), alignment=1).set_style(style_5)
-        self.rx = self.grid_gyro2.add(_g.NumberBox(suffix='°/s'), alignment=1).set_width(175).set_style(style_6)
+        self.rx = self.grid_gyro2.add(_g.NumberBox(suffix='°/s',dec=True,minStep=.001,decimals=4), alignment=1).set_width(200).set_style(style_6)
         self.grid_gyro2.add(_g.Label('y:'), alignment=1).set_style(style_5)
-        self.ry = self.grid_gyro2.add(_g.NumberBox(suffix='°/s'), alignment=1).set_width(175).set_style(style_6)
+        self.ry = self.grid_gyro2.add(_g.NumberBox(suffix='°/s',dec=True,minStep=.001,decimals=4), alignment=1).set_width(200).set_style(style_6)
         self.grid_gyro2.add(_g.Label('z:'), alignment=1).set_style(style_5)
-        self.rz = self.grid_gyro2.add(_g.NumberBox(suffix='°/s'), alignment=1).set_width(175).set_style(style_6)
+        self.rz = self.grid_gyro2.add(_g.NumberBox(suffix='°/s',decimals =4), alignment=1).set_width(200).set_style(style_6)
+        
+        self.button_zero_gyro.signal_clicked.connect(self._button_zero_gyro_clicked)
+        
         
         self.grid_mag1.add(_g.Label('Magnetic field:'), alignment=1).set_style(style_1)
         self.mag_tot = self.grid_mag1.add(_g.NumberBox(suffix='uT', decimals = 4), alignment=1).set_width(200).set_style(style_5)
         self.grid_mag2.add(_g.Label('x:'), alignment=1).set_style(style_5)
-        self.bx = self.grid_mag2.add(_g.NumberBox(suffix='uT'), alignment=1).set_width(175).set_style(style_6)
+        self.bx = self.grid_mag2.add(_g.NumberBox(suffix='uT'), alignment=1).set_width(200).set_style(style_6)
         self.grid_mag2.add(_g.Label('y:'), alignment=1).set_style(style_5)
-        self.by = self.grid_mag2.add(_g.NumberBox(suffix='uT'), alignment=1).set_width(175).set_style(style_6)
+        self.by = self.grid_mag2.add(_g.NumberBox(suffix='uT'), alignment=1).set_width(200).set_style(style_6)
         self.grid_mag2.add(_g.Label('z:'), alignment=1).set_style(style_5)
-        self.bz = self.grid_mag2.add(_g.NumberBox(suffix='uT'), alignment=1).set_width(175).set_style(style_6)
+        self.bz = self.grid_mag2.add(_g.NumberBox(suffix='uT'), alignment=1).set_width(200).set_style(style_6)
         
         
         '''
@@ -537,6 +548,31 @@ class rtd_monitor(_g.BaseObject):
         
         # Bottom log file controls
         self.grid_bot.new_autorow()
+        
+    def _button_zero_gyro_clicked(self):
+        r_xs = []
+        r_ys = []
+        r_zs = []
+        
+
+        
+        
+        for i in range(500):
+            T, a_x, a_y, a_z, r_x, r_y, r_z, b_x, b_y, b_z = self.api.get_params()
+                
+            # Convert to degrees/s
+            r_x, r_y, r_z = r_x*RAD_TO_DEGREES, r_y*RAD_TO_DEGREES, r_z*RAD_TO_DEGREES
+            
+            r_xs.append(r_x)
+            r_ys.append(r_y)
+            r_zs.append(r_z)
+            
+            _time.sleep(.01)
+            
+        self.r_x_offset = _n.average(r_xs)
+        self.r_y_offset = _n.average(r_ys)
+        self.r_z_offset = _n.average(r_zs)
+        
         
     def _button_up_left_toggled(self):
         
