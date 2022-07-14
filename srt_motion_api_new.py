@@ -71,6 +71,9 @@ class srt_motion_api():
         
         # Give the arduino time to run setup loop!
         _time.sleep(2)
+        
+        #
+        self.serial.flushInput()
                                 
     def disconnect(self):
         """
@@ -141,9 +144,14 @@ class srt_motion_api():
         str
             Raw data string read from the serial line.
         """
-        return self.serial.read_until(expected = '\r\n'.encode()).decode().strip('\r\n')
-    
+        data = self.serial.read_all().decode()
+        data = data.split('\r\n')
+        
 
+        data.remove(data[0])
+        data.remove(data[-1])
+    
+        return data
         
 def _debug(*a):
     if _debug_enabled:

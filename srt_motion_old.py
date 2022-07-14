@@ -11,7 +11,7 @@ import traceback   as _traceback
 import spinmob     as _s
 import time        as _time
 
-from srt_motion_api_new import srt_motion_api
+from srt_motion_api import srt_motion_api
 
 try: from serial.tools.list_ports import comports as _comports
 except: _comports = None
@@ -35,7 +35,8 @@ style_5    = 'font-size: 14pt; font-weight: bold; color: ' +('paleturquoise'    
 style_6    = 'font-size: 14pt; font-weight: bold; color: ' +('mediumspringgreen'  if _s.settings['dark_theme_qt'] else 'mediumspringgreen')
 
 
-class srt_motion(_g.BaseObject):
+
+class rtd_monitor(_g.BaseObject):
     """
     Graphical interface for the Arduino based PID temperature controller.
     
@@ -74,7 +75,7 @@ class srt_motion(_g.BaseObject):
         self._api_class = api_class
 
         # Create GUI window
-        self.window   = _g.Window(self.name, size = [1200,900], autosettings_path=name+'.window',event_close = self._window_close)
+        self.window   = _g.Window(self.name, size = [400,300], autosettings_path=name+'.window',event_close = self._window_close)
         
        # Get all the available ports
         self._ports = [] # Actual port names for connecting
@@ -87,7 +88,7 @@ class srt_motion(_g.BaseObject):
                 self._ports.append(p.device)
                 ports      .append(p.description)
                 
-                if 'COM' in p.description:
+                if 'Arduino' in p.description:
                     default_port = inx
                     
 
@@ -120,55 +121,7 @@ class srt_motion(_g.BaseObject):
         """
         
         t = _time.time()-self.t0
-        params = self.api.read()
-        a_x = []
-        a_y = []
-        a_z = []
-        
-        r_x = [] 
-        r_y = []
-        r_z = []
-        
-        b_x = []
-        b_y = []
-        b_z = []
-        
-        T = []
-        
-        for i in range(len(params)):
-            d = params[i].split(',')
-            a_x.append( float(d[1]) )
-            a_y.append( float(d[2]) )
-            a_z.append( float(d[3]) )
-            
-            r_x.append( float(d[4]) )
-            r_y.append( float(d[5]) )
-            r_z.append( float(d[6]) )
-            
-            b_x.append( float(d[7]) )
-            b_y.append( float(d[8]) )
-            b_z.append( float(d[9]) )
-            
-            T.append( float(d[0]) )
-            
-            
-            
-            
-        #T, a_x, a_y, a_z, r_x, r_y, r_z, b_x, b_y, b_z = 
-        
-        T = _n.average(T)
-        
-        a_x = _n.average(a_x)
-        a_y = _n.average(a_y)
-        a_z = _n.average(a_z)
-        
-        r_x = _n.average(r_x)
-        r_y = _n.average(r_y)
-        r_z = _n.average(r_z)
-        
-        b_x = _n.average(b_x)
-        b_y = _n.average(b_y)
-        b_z = _n.average(b_z)
+        T, a_x, a_y, a_z, r_x, r_y, r_z, b_x, b_y, b_z = self.api.get_params()
         
         # Convert to degrees/s
         r_x, r_y, r_z = r_x*RAD_TO_DEGREES, r_y*RAD_TO_DEGREES, r_z*RAD_TO_DEGREES
@@ -245,7 +198,7 @@ class srt_motion(_g.BaseObject):
             if self.t0 is None: self.t0 = _time.time()
 
             # Enable the grid
-            self.grid_main.enable()
+            self.grid_bot.enable()
 
             # Disable other controls
             self.combo_baudrates.disable()
@@ -269,7 +222,7 @@ class srt_motion(_g.BaseObject):
             self.button_connect.set_colors()
             
             # Disable plotting
-            self.grid_main.disable()
+            self.grid_bot.disable()
 
             # Re-enable other controls
             self.combo_baudrates.enable()
@@ -309,7 +262,7 @@ class srt_motion(_g.BaseObject):
                     self._ports.append(p.device)
                     ports      .append(p.description)
                     
-                    if 'COM' in p.description:
+                    if 'Arduino' in p.description:
                         default_port = inx
                         
             # Append simulation port
@@ -349,152 +302,86 @@ class srt_motion(_g.BaseObject):
         return self._ports[self.combo_ports.get_index()]
     
     def populate_window(self, ports, default_port, show, block):
+        """
+        All the GUI window populating shoved into one convenient (and out of site) place. 
+        """
+        
         ## Create partitions in the GUI window ##
         
-        self.grid_serial = self.window.place_object(_g.GridLayout(margins=False),row=0,column=0,column_span=10)
+        self.grid_top = self.window.place_object(
+            _g.GridLayout(margins=False),0,0,alignment=1,column_span=2)
+        
+ 
+        self.window.new_autorow()
+        self.grid_1= self.window.place_object(_g.GridLayout(margins=False),0,3,alignment=1,column_span=1)
         
         self.window.new_autorow()
-        self.grid_error = self.window.place_object(_g.GridLayout(margins=False),row=1,column=0,column_span=10)
         
-
+        self.grid_location = self.grid_1.place_object(_g.GridLayout(margins=False),alignment=0)
+        self.grid_1.new_autorow()
+        self.grid_position = self.grid_1.place_object(_g.GridLayout(margins=False),alignment=0)
+        self.grid_buttons = self.grid_1.place_object(_g.GridLayout(margins=False),alignment=0)
+        
+        #self.grid_1.set_column_stretch()
+ 
         self.window.new_autorow()
-        self.grid_main    = self.window.place_object(_g.GridLayout(margins=False), row=2, column=0, column_span=10, alignment=0)
-        self.grid_control = self.window.place_object(_g.GridLayout(margins=False), row=2, column=10, column_span=1, alignment=0)
-    
-
-        self.grid_location_text = self.grid_control.place_object(_g.GridLayout(margins=False),row=0,alignment=0)
-        self.grid_control.new_autorow()
-        self.grid_location = self.grid_control.place_object(_g.GridLayout(margins=False),row=1,alignment=0)
-        self.grid_control.new_autorow()
-        self.grid_control.new_autorow()
-        self.grid_target_text = self.grid_control.place_object(_g.GridLayout(margins=False),row=3,alignment=0)
-        self.grid_control.new_autorow()
-        self.grid_target = self.grid_control.place_object(_g.GridLayout(margins=False),row=4,alignment=0)
-        self.grid_control.new_autorow()
-        self.grid_control.new_autorow()
-        self.grid_buttons  = self.grid_control.place_object(_g.GridLayout(margins=False),row=6,alignment=0)
-
-        self.grid_control.set_row_stretch(2,10)
-        self.grid_control.set_row_stretch(5,6)
+        self.grid_bot = self.window.place_object(_g.GridLayout(margins=False),row=4,column=5,alignment=0)
+        self.grid_bot1 = self.window.place_object(_g.GridLayout(margins=False),row=4,column=6,alignment=0)
+        ## Add widgets (buttons, selectors, ect..) to the GUI ##
+        
         # Add port selector to GUI 
-        self._label_port = self.grid_serial.add(_g.Label('Port:'))
-        self.combo_ports = self.grid_serial.add(_g.ComboBox(ports, default_index = default_port, autosettings_path=self.name+'.combo_ports'))
+        self._label_port = self.grid_top.add(_g.Label('Port:'))
+        self.combo_ports = self.grid_top.add(_g.ComboBox(ports, default_index = default_port, autosettings_path=self.name+'.combo_ports'))
         self.combo_ports.signal_changed.connect(self._ports_changed)
         
         # Add BAUD selector to GUI 
-        self.grid_serial.add(_g.Label('Baud:'))
-        self.combo_baudrates = self.grid_serial.add(
+        self.grid_top.add(_g.Label('Baud:'))
+        self.combo_baudrates = self.grid_top.add(
             _g.ComboBox(['1200','2400','4800', '9600', '19200', '38400', '57600', '115200'],default_index=7,autosettings_path=
                         self.name+'.combo_baudrates'))
 
         # Add Timeout selector to GUI 
-        self.grid_serial.add(_g.Label('Timeout:'))
-        self.number_timeout = self.grid_serial.add(
+        self.grid_top.add(_g.Label('Timeout:'))
+        self.number_timeout = self.grid_top.add(
             _g.NumberBox(500, dec=True, bounds=(1, None), suffix=' ms',
                          tip='How long to wait for an answer before giving up (ms).', autosettings_path=self.name+'.number_timeout')).set_width(100)
 
         # Add a button to connect to serial port to GUI
-        self.button_connect  = self.grid_serial.add(_g.Button('Connect', checkable=True,tip='Connect to the selected serial port.'))
+        self.button_connect  = self.grid_top.add(_g.Button('Connect', checkable=True,tip='Connect to the selected serial port.'))
         self.button_connect.signal_toggled.connect(self._button_connect_toggled)
         
         # Status
-        self.label_status = self.grid_error.add(_g.Label(''))
+        self.label_status = self.grid_top.add(_g.Label(''))
 
         # Error
-        self.label_message = self.grid_error.add(_g.Label(''), column_span=1).set_colors('pink' if _s.settings['dark_theme_qt'] else 'red')
+        self.grid_top.new_autorow()
+        self.label_message = self.grid_top.add(_g.Label(''), column_span=1).set_colors('pink' if _s.settings['dark_theme_qt'] else 'red')
         
         # By default the bottom grid is disabled
-        #self.grid_main.disable()    
-        
+        self.grid_bot.disable()
+
+
         # Other data
         self.t0 = None
 
         # Run the base object stuff and autoload settings
         _g.BaseObject.__init__(self, autosettings_path=self.name)
+
+        # Show the window.
+        if show: self.window.show(block)
           
+        
         # Data box width
         box_width = 175
-        
-        
-        self.grid_location_text.add(_g.Label('Current Position:'), alignment=0).set_style(style_1)
-         
-        self.grid_location.add(_g.Label('α:'), alignment=1, column = 0).set_style(style_5)
-        self.number_ra = self.grid_location.add(_g.TextBox(
-            '00h 00m 00s', tip='Right Ascension.'), alignment=1, column = 1).set_width(200).disable().set_style(style_6)
-    
-        self.grid_location.add(_g.Label('Altitude:'), alignment=1, column = 2).set_style(style_5)
-        self.number_dec = self.grid_location.add(_g.NumberBox(
-            0.0, suffix='°', tip='Declination.'), alignment=1, column = 3).set_width(125).disable().set_style(style_6)
-        
-        self.grid_location.new_autorow()
-        
-        self.grid_location.add(_g.Label('δ:'), alignment=1, column = 0).set_style(style_5)
-        self.number_dec = self.grid_location.add(_g.NumberBox(
-            0.0, suffix='°', tip='Declination.'), alignment=1, column = 1).set_width(125).disable().set_style(style_6)
-        
-        self.grid_location.add(_g.Label('Azimuth:'), alignment=1, column = 2).set_style(style_5)
-        self.number_dec = self.grid_location.add(_g.NumberBox(
-            0.0, suffix='°', tip='Declination.'), alignment=1, column = 3).set_width(125).disable().set_style(style_6)
  
-        self.grid_target_text.add(_g.Label('Target Position:'), alignment=0).set_style(style_1)
-        self.grid_target_text.add(_g.Button('Slew')).set_width(150).set_style(style_5)
-         
-        self.grid_target.add(_g.Label('α:'), alignment=1, column = 0).set_style(style_5)
-        self.number_ra = self.grid_target.add(_g.TextBox(
-            '00h 00m 00s', tip='Right Ascension.'), alignment=1, column = 1).set_width(200).disable().set_style(style_6)
-    
-        self.grid_target.add(_g.Label('Altitude:'), alignment=1, column = 2).set_style(style_5)
-        self.number_dec = self.grid_target.add(_g.NumberBox(
-            0.0, suffix='°', tip='Declination.'), alignment=1, column = 3).set_width(125).disable().set_style(style_6)
+        self.tabs = self.grid_bot.add(_g.TabArea(self.name+'.tabs'), alignment=0)
+        self.tabs1 = self.grid_bot1.add(_g.TabArea(self.name+'.tabs'), alignment=0)
         
-        self.grid_target.new_autorow()
-        
-        self.grid_target.add(_g.Label('δ:'), alignment=1, column = 0).set_style(style_5)
-        self.number_dec = self.grid_target.add(_g.NumberBox(
-            0.0, suffix='°', tip='Declination.'), alignment=1, column = 1).set_width(125).disable().set_style(style_6)
-        
-        self.grid_target.add(_g.Label('Azimuth:'), alignment=1, column = 2).set_style(style_5)
-        self.number_dec = self.grid_target.add(_g.NumberBox(
-            0.0, suffix='°', tip='Declination.'), alignment=1, column = 3).set_width(125).disable().set_style(style_6)
-        
-        
-        self.a1 = self.grid_buttons.add(_g.Button('↖', checkable=True).set_style(style_1),alignment=0)
-        self.a2 = self.grid_buttons.add(_g.Button('↑', checkable=True).set_style(style_1),alignment=0)
-        self.a3 = self.grid_buttons.add(_g.Button('↗', checkable=True).set_style(style_1),alignment=0)
-        
-        self.grid_buttons.new_autorow()
-        
-        self.b1 = self.grid_buttons.add(_g.Button('←', checkable=True).set_style(style_1),alignment=0)
-        self.b2 = self.grid_buttons.add(_g.Button('■').set_style(style_1),alignment=0)
-        self.b3 = self.grid_buttons.add(_g.Button('→', checkable=True).set_style(style_1),alignment=0)
-
-        self.grid_buttons.new_autorow()
-        
-        self.c1 = self.grid_buttons.add(_g.Button('↙', checkable=True).set_style(style_1),alignment=0)
-        self.c2 = self.grid_buttons.add(_g.Button('↓', checkable=True).set_style(style_1),alignment=0)
-        self.c3 = self.grid_buttons.add(_g.Button('↘', checkable=True).set_style(style_1),alignment=0)
-        
-        self.a1.signal_toggled.connect(self._button_up_left_toggled)
-        self.a2.signal_toggled.connect(self._button_up_toggled)
-        self.a3.signal_toggled.connect(self._button_up_right_toggled)
-        
-        self.b1.signal_toggled.connect(self._button_left_toggled)
-        self.b3.signal_toggled.connect(self._button_right_toggled)
-        
-        self.c1.signal_toggled.connect(self._button_down_left_toggled)
-        self.c2.signal_toggled.connect(self._button_down_toggled)
-        self.c3.signal_toggled.connect(self._button_down_right_toggled)
-        
-        
-        self.tabs = self.grid_main.add(_g.TabArea(self.name+'.tabs'), alignment=0,row=0,column=0)
-        
-        
-        self.tab_sensors      = self.tabs.add_tab('Sensor Monitor')
+        self.tab_motors       = self.tabs.add_tab('Sensor Monitor')
         self.tab_accelration  = self.tabs.add_tab('Acceleration')
         self.tab_rotation     = self.tabs.add_tab('Rotation')
         self.tab_temperature  = self.tabs.add_tab('Temperature')
-        self.tab_bfield       = self.tabs.add_tab('Magnetic Field')
-        
+        self.tab_bfield       = self.tabs1.add_tab('Magnetic Field')
         
         
         ## Make the plotter ##
@@ -518,93 +405,139 @@ class srt_motion(_g.BaseObject):
             autosettings_path=self.name+'.plot_bfield',
             delimiter=',', show_logger=True), alignment=0, column_span=10)
         
+        #self.tab_motors.
         
-        self.grid_sensors = self.tab_sensors.place_object(_g.GridLayout())
-        self.grid_acc1 = self.grid_sensors.place_object(_g.GridLayout())
-        self.grid_sensors.new_autorow()
-        self.grid_acc2 = self.grid_sensors.place_object(_g.GridLayout())
-        self.grid_sensors.new_autorow()
-        self.grid_gyro1 = self.grid_sensors.place_object(_g.GridLayout())
-        self.grid_sensors.new_autorow()
-        self.grid_gyro2 = self.grid_sensors.place_object(_g.GridLayout())
-        self.grid_sensors.new_autorow()
-        self.grid_mag1 = self.grid_sensors.place_object(_g.GridLayout())
-        self.grid_sensors.new_autorow()
-        self.grid_mag2 = self.grid_sensors.place_object(_g.GridLayout())
-        self.grid_sensors.new_autorow()
-        self.grid_temp = self.grid_sensors.place_object(_g.GridLayout())
+        self.grid_controls = self.tab_motors.place_object(_g.GridLayout())
+        #self.grid_buttons = self.grid_params.place_object(_g.GridLayout())
         
-        data_box_width = 250
+        self.grid_acc1 = self.grid_controls.place_object(_g.GridLayout())
+        self.grid_controls.new_autorow()
+        self.grid_acc2 = self.grid_controls.place_object(_g.GridLayout())
+        self.grid_controls.new_autorow()
+        self.grid_gyro1 = self.grid_controls.place_object(_g.GridLayout())
+        self.grid_controls.new_autorow()
+        self.grid_gyro2 = self.grid_controls.place_object(_g.GridLayout())
+        self.grid_controls.new_autorow()
+        self.grid_mag1 = self.grid_controls.place_object(_g.GridLayout())
+        self.grid_controls.new_autorow()
+        self.grid_mag2 = self.grid_controls.place_object(_g.GridLayout())
+        self.grid_controls.new_autorow()
+        self.grid_temp = self.grid_controls.place_object(_g.GridLayout())
+        
+        
+        
+        self.grid_location.add(_g.Label('Location:'), alignment=1).set_style(style_1)
+         
+        self.grid_position.add(_g.Label('α:'), alignment=1, column = 0).set_style(style_5)
+        self.number_ra = self.grid_position.add(_g.TextBox(
+            '00h 00m 00s', tip='Right Ascension.'), alignment=1, column = 1).set_width(200).disable().set_style(style_6)
+    
+        self.grid_position.add(_g.Label('Altitude:'), alignment=1, column = 2).set_style(style_5)
+        self.number_dec = self.grid_position.add(_g.NumberBox(
+            0.0, suffix='°', tip='Declination.'), alignment=1, column = 3).set_width(125).disable().set_style(style_6)
+        
+        self.grid_position.new_autorow()
+        
+        self.grid_position.add(_g.Label('δ:'), alignment=1, column = 0).set_style(style_5)
+        self.number_dec = self.grid_position.add(_g.NumberBox(
+            0.0, suffix='°', tip='Declination.'), alignment=1, column = 1).set_width(125).disable().set_style(style_6)
+        
+        self.grid_position.add(_g.Label('Azimuth:'), alignment=1, column = 2).set_style(style_5)
+        self.number_dec = self.grid_position.add(_g.NumberBox(
+            0.0, suffix='°', tip='Declination.'), alignment=1, column = 3).set_width(125).disable().set_style(style_6)
+
+        self.a1 = self.grid_buttons.add(_g.Button('↖', checkable=True).set_style(style_1),alignment=0, row_span=1)
+        self.a2 = self.grid_buttons.add(_g.Button('↑', checkable=True).set_style(style_1),alignment=0, row_span=1)
+        self.a3 = self.grid_buttons.add(_g.Button('↗', checkable=True).set_style(style_1),alignment=0, column_span=1)
+        
+        self.grid_buttons.new_autorow()
+        
+        self.b1 = self.grid_buttons.add(_g.Button('←', checkable=True).set_style(style_1),alignment=0, column_span=1)
+        self.b2 = self.grid_buttons.add(_g.Button('■').set_style(style_1),alignment=0, column_span=1)
+        self.b3 = self.grid_buttons.add(_g.Button('→', checkable=True).set_style(style_1),alignment=0, column_span=1)
+
+        self.grid_buttons.new_autorow()
+        
+        self.c1 = self.grid_buttons.add(_g.Button('↙', checkable=True).set_style(style_1),alignment=0, column_span=1)
+        self.c2 = self.grid_buttons.add(_g.Button('↓', checkable=True).set_style(style_1),alignment=0, column_span=1)
+        self.c3 = self.grid_buttons.add(_g.Button('↘', checkable=True).set_style(style_1),alignment=0, column_span=1)
+        
+        #self.grid_buttons.new_autorow()
+        
+        
+        self.grid_buttons.set_row_stretch(0,5)
+        self.grid_buttons.set_row_stretch(1,0)
+        self.grid_buttons.set_row_stretch(2,0)
+        #self.grid_buttons.set_row_stretch(3,0)
+        
+        self.a1.signal_toggled.connect(self._button_up_left_toggled)
+        self.a2.signal_toggled.connect(self._button_up_toggled)
+        self.a3.signal_toggled.connect(self._button_up_right_toggled)
+        
+        self.b1.signal_toggled.connect(self._button_left_toggled)
+        self.b3.signal_toggled.connect(self._button_right_toggled)
+        
+        self.c1.signal_toggled.connect(self._button_down_left_toggled)
+        self.c2.signal_toggled.connect(self._button_down_toggled)
+        self.c3.signal_toggled.connect(self._button_down_right_toggled)
         
         self.grid_acc1.add(_g.Label('Acceleration:'), alignment=1).set_style(style_1)
-        self.acc_tot = self.grid_acc1.add(_g.NumberBox(suffix='m/s', decimals = 4), alignment=1).set_width(data_box_width).set_style(style_5)
+        self.acc_tot = self.grid_acc1.add(_g.NumberBox(suffix='m/s', decimals = 4), alignment=1).set_width(200).set_style(style_5)
         self.grid_acc2.add(_g.Label('x:'), alignment=1).set_style(style_5)
-        self.ax = self.grid_acc2.add(_g.NumberBox(suffix='m/s'), alignment=1).set_width(data_box_width).set_style(style_6)
+        self.ax = self.grid_acc2.add(_g.NumberBox(suffix='m/s'), alignment=1).set_width(200).set_style(style_6)
         self.grid_acc2.add(_g.Label('y:'), alignment=1).set_style(style_5)
-        self.ay = self.grid_acc2.add(_g.NumberBox(suffix='m/s'), alignment=1).set_width(data_box_width).set_style(style_6)
+        self.ay = self.grid_acc2.add(_g.NumberBox(suffix='m/s'), alignment=1).set_width(200).set_style(style_6)
         self.grid_acc2.add(_g.Label('z:'), alignment=1).set_style(style_5)
-        self.az = self.grid_acc2.add(_g.NumberBox(suffix='m/s'), alignment=1).set_width(data_box_width).set_style(style_6)
+        self.az = self.grid_acc2.add(_g.NumberBox(suffix='m/s'), alignment=1).set_width(200).set_style(style_6)
         
         self.grid_gyro1.add(_g.Label('Rotation:'), alignment=1).set_style(style_1)
-        self.gyro_tot = self.grid_gyro1.add(_g.NumberBox(suffix='°/s', dec=True,minStep=.001,decimals=4), alignment=1).set_width(data_box_width).set_style(style_5)
-        self.button_zero_gyro = self.grid_gyro1.add(_g.Button('Zero')).set_height(50)
+        self.gyro_tot = self.grid_gyro1.add(_g.NumberBox(suffix='°/s', dec=True,minStep=.001,decimals=4), alignment=1).set_width(200).set_style(style_5)
+        self.button_zero_gyro = self.grid_gyro1.add(_g.Button('Zero'))
         self.grid_gyro2.add(_g.Label('x:'), alignment=1).set_style(style_5)
-        self.rx = self.grid_gyro2.add(_g.NumberBox(suffix='°/s',dec=True,minStep=.001,decimals=4), alignment=1).set_width(data_box_width).set_style(style_6)
+        self.rx = self.grid_gyro2.add(_g.NumberBox(suffix='°/s',dec=True,minStep=.001,decimals=4), alignment=1).set_width(200).set_style(style_6)
         self.grid_gyro2.add(_g.Label('y:'), alignment=1).set_style(style_5)
-        self.ry = self.grid_gyro2.add(_g.NumberBox(suffix='°/s',dec=True,minStep=.001,decimals=4), alignment=1).set_width(data_box_width).set_style(style_6)
+        self.ry = self.grid_gyro2.add(_g.NumberBox(suffix='°/s',dec=True,minStep=.001,decimals=4), alignment=1).set_width(200).set_style(style_6)
         self.grid_gyro2.add(_g.Label('z:'), alignment=1).set_style(style_5)
-        self.rz = self.grid_gyro2.add(_g.NumberBox(suffix='°/s',decimals =4), alignment=1).set_width(data_box_width).set_style(style_6)
+        self.rz = self.grid_gyro2.add(_g.NumberBox(suffix='°/s',decimals =4), alignment=1).set_width(200).set_style(style_6)
         
         self.button_zero_gyro.signal_clicked.connect(self._button_zero_gyro_clicked)
         
         
         self.grid_mag1.add(_g.Label('Magnetic field:'), alignment=1).set_style(style_1)
-        self.mag_tot = self.grid_mag1.add(_g.NumberBox(suffix='uT', decimals = 4), alignment=1).set_width(data_box_width).set_style(style_5)
+        self.mag_tot = self.grid_mag1.add(_g.NumberBox(suffix='uT', decimals = 4), alignment=1).set_width(200).set_style(style_5)
         self.grid_mag2.add(_g.Label('x:'), alignment=1).set_style(style_5)
-        self.bx = self.grid_mag2.add(_g.NumberBox(suffix='uT'), alignment=1).set_width(data_box_width).set_style(style_6)
+        self.bx = self.grid_mag2.add(_g.NumberBox(suffix='uT'), alignment=1).set_width(200).set_style(style_6)
         self.grid_mag2.add(_g.Label('y:'), alignment=1).set_style(style_5)
-        self.by = self.grid_mag2.add(_g.NumberBox(suffix='uT'), alignment=1).set_width(data_box_width).set_style(style_6)
+        self.by = self.grid_mag2.add(_g.NumberBox(suffix='uT'), alignment=1).set_width(200).set_style(style_6)
         self.grid_mag2.add(_g.Label('z:'), alignment=1).set_style(style_5)
-        self.bz = self.grid_mag2.add(_g.NumberBox(suffix='uT'), alignment=1).set_width(data_box_width).set_style(style_6)
+        self.bz = self.grid_mag2.add(_g.NumberBox(suffix='uT'), alignment=1).set_width(200).set_style(style_6)
         
         # Tab for monitoring measured temperature
         self.grid_temp.add(_g.Label('Temperature:'), alignment=2).set_style(style_1)
         self.number_temperature = self.grid_temp.add(_g.NumberBox(
-            value=-273.16, suffix='°C', tip='Last recorded temperature value.'), alignment=2).set_width(data_box_width).disable().set_style(style_5)
+            value=-273.16, suffix='°C', tip='Last recorded temperature value.'), alignment=2).set_width(250).disable().set_style(style_6)
+        
+        
+        '''
+        self.grid_fault.add(_g.Label('Azimuth:').set_style(style_5))
+        self.grid_fault.add(_g.TextBox('Idle').set_width(150).set_style(style_6), alignment=0)
+        
+        self.grid_fault.new_autorow()
+        self.grid_fault.add(_g.Label('Altitude:').set_style(style_5))
+        self.grid_fault.add(_g.TextBox('Idle').set_width(150).set_style(style_6), alignment=0)'''
         
         self.motor_buttons = [self.a1,self.a2,self.a3,self.b1,self.b3,self.c1,self.c2,self.c3]
         
-        # Show the window.
-        if show: self.window.show(block)
+        # Bottom log file controls
+        self.grid_bot.new_autorow()
         
     def _button_zero_gyro_clicked(self):
-
-         params = self.api.read()
-         
-         r_x = [] 
-         r_y = []
-         r_z = []
-         
-         for i in range(len(params)):
-             d = params[i].split(',')
-             
-             r_x.append( float(d[4]) )
-             r_y.append( float(d[5]) )
-             r_z.append( float(d[6]) )
-         
-         r_x = _n.average(r_x)*RAD_TO_DEGREES
-         r_y = _n.average(r_y)*RAD_TO_DEGREES
-         r_z = _n.average(r_z)*RAD_TO_DEGREES
-         
-             
-         self.r_x_offset = r_x
-         self.r_y_offset = r_y
-         self.r_z_offset = r_z
-        
-    '''def _button_zero_gyro_clicked(self):
         r_xs = []
         r_ys = []
         r_zs = []
+        
+
+        
         
         for i in range(500):
             T, a_x, a_y, a_z, r_x, r_y, r_z, b_x, b_y, b_z = self.api.get_params()
@@ -620,7 +553,7 @@ class srt_motion(_g.BaseObject):
             
         self.r_x_offset = _n.average(r_xs)
         self.r_y_offset = _n.average(r_ys)
-        self.r_z_offset = _n.average(r_zs)'''
+        self.r_z_offset = _n.average(r_zs)
         
         
     def _button_up_left_toggled(self):
@@ -629,9 +562,6 @@ class srt_motion(_g.BaseObject):
             for button in self.motor_buttons:
                 if(button.is_checked() and button != self.a1):
                     button.click()
-                    self.a1.click()
-                    self.api.set_motors()
-                    return
                     
             self.a1.set_colors(background = 'mediumspringgreen')
             self.api.set_motors(True, True, True, True)
@@ -646,9 +576,6 @@ class srt_motion(_g.BaseObject):
             for button in self.motor_buttons:
                 if(button.is_checked() and button != self.a2):
                     button.click()
-                    self.a2.click()
-                    self.api.set_motors()
-                    return
                     
             self.a2.set_colors(background = 'mediumspringgreen')
             self.api.set_motors(True, False, True, False)
@@ -663,12 +590,10 @@ class srt_motion(_g.BaseObject):
             for button in self.motor_buttons:
                 if(button.is_checked() and button != self.a3):
                     button.click()
-                    self.a3.click()
-                    self.api.set_motors()
-                    return
                     
             self.a3.set_colors(background = 'mediumspringgreen')
             self.api.set_motors(True, True, True, False)
+
         else:
             self.a3.set_colors(background = None)
             self.api.set_motors() 
@@ -679,9 +604,6 @@ class srt_motion(_g.BaseObject):
             for button in self.motor_buttons:
                 if(button.is_checked() and button != self.b1):
                     button.click()
-                    self.b1.click()
-                    self.api.set_motors()
-                    return
                 
             self.b1.set_colors(background = 'mediumspringgreen')
             self.api.set_motors(False, True, False, True)
@@ -697,9 +619,6 @@ class srt_motion(_g.BaseObject):
             for button in self.motor_buttons:
                 if(button.is_checked() and button != self.b3):
                     button.click()
-                    self.b3.click()
-                    self.api.set_motors()
-                    return
                     
             self.b3.set_colors(background = 'mediumspringgreen')
             self.api.set_motors(False, True, False, False)
@@ -715,9 +634,6 @@ class srt_motion(_g.BaseObject):
             for button in self.motor_buttons:
                 if(button.is_checked() and button != self.c1):
                     button.click()
-                    self.c1.click()
-                    self.api.set_motors()
-                    return
                     
             self.c1.set_colors(background = 'mediumspringgreen')
             self.api.set_motors(True, True, False, True)
@@ -733,9 +649,6 @@ class srt_motion(_g.BaseObject):
             for button in self.motor_buttons:
                 if(button.is_checked() and button != self.c2):
                     button.click()
-                    self.c2.click()
-                    self.api.set_motors()
-                    return
                     
             self.c2.set_colors(background = 'mediumspringgreen')
             self.api.set_motors(True, False, False, False)
@@ -751,18 +664,16 @@ class srt_motion(_g.BaseObject):
             for button in self.motor_buttons:
                 if(button.is_checked() and button != self.c3):
                     button.click()
-                    self.c3.click()
-                    self.api.set_motors()
-                    return
                     
             self.c3.set_colors(background = 'mediumspringgreen')
             self.api.set_motors(True, True, False, False)
             
         else:
             self.c3.set_colors(background = None)
-            self.api.set_motors()      
+            self.api.set_motors()        
             
             
+
 def _debug(*a):
     if _debug_enabled:
         s = []
@@ -771,4 +682,4 @@ def _debug(*a):
 
 if __name__ == '__main__':
     _egg.clear_egg_settings()
-    self = srt_motion()
+    self = rtd_monitor()
