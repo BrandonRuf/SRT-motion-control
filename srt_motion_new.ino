@@ -1,10 +1,12 @@
 #include <Wire.h>
 
 #define BAUD 115200             // Serial COM baudrate
-#define ADDR 0x6A               // Chip I2C address
+#define IMU_ADDR 0x6A           // IMU Chip I2C Address
+#define MAG_ADDR 0x1C            // Magnetometer Chip I2C Address
+
 #define EARTH_GRAVITY 9.80665F  // m/s^2 [standard value (defined)]
 
-//** Register definitions **//
+//** IMU Register definitions **//
 #define CTRL1_XL  0x10  // Accelerometer control register 1 (r/w)
 #define CTRL2_G   0x11  // Gyroscope control register 2     (r/w)
 #define CTRL3_C   0x12  // Control register 3 (r/w)
@@ -24,6 +26,23 @@
 #define OUTX_L_A   0x28 // Linear acceleration sensor X-axis output register (r)
 #define OUTY_L_A   0x2A // Linear acceleration sensor Y-axis output register (r)
 #define OUTZ_L_A   0x2C // Linear acceleration sensor Z-axis output register (r)
+
+//** MAGNETOMETER Register definitions **//
+#define OUT_X_L 0x28
+#define OUT_Y_L 0x2A
+#define OUT_Z_L 0x2C
+
+#define WHO_AM_I_MAG 0x0F
+
+//** Motor control pins **//
+#define M1FLT_PIN 2     // Motor 1 Fault 
+#define M2FLT_PIN 3     // Motor 2 Fault 
+#define M1PWM_PIN 4     // Motor 1 PWM 
+#define M2PWM_PIN 5     // Motor 2 PWM 
+#define M1EN_PIN  12    // Motor 1 Enable 
+#define M2EN_PIN  13    // Motor 2 Enable 
+#define M1DIR_PIN 8     // Motor 1 Direction 
+#define M2DIR_PIN 9     // Motor 2 Direction 
 
 /* Gyro data range */
 typedef enum{
@@ -57,11 +76,27 @@ typedef enum{
   RATE_6_66K_HZ = 0b10100000,
 } data_rate;
 
-float acceleration[3],rotation[3],bfield[3],temperature[1];
+float acceleration[3],rotation[3],mag[3],temperature[1];
+float rotation_offset[3] = {0.,0.,0.};
+
+bool get_mag(float *_mag){
+  byte buffer[6];
+  i2c_read(MAG_ADDR,buffer,OUT_X_L,6);
+
+  int16_t rawMagX,rawMagY,rawMagZ;
+  
+  rawMagX = buffer[1] << 8 | buffer[0];
+  rawMagY = buffer[3] << 8 | buffer[2];
+  rawMagZ = buffer[5] << 8 | buffer[4];
+
+  _mag[0] = rawMagX *6842/1000.;
+  _mag[1] = rawMagY *6842/1000.;
+  _mag[2] = rawMagZ *6842/1000.;
+}
 
 bool get_rotation(float *_rotation){
   byte buffer[6];
-  i2c_read(buffer,OUTX_L_G,6);
+  i2c_read(IMU_ADDR,buffer,OUTX_L_G,6);
 
   int16_t rawGyroX,rawGyroY,rawGyroZ;
   
@@ -69,14 +104,14 @@ bool get_rotation(float *_rotation){
   rawGyroY = buffer[3] << 8 | buffer[2];
   rawGyroZ = buffer[5] << 8 | buffer[4];
 
-  _rotation[0] = rawGyroX /1000.;
-  _rotation[1] = rawGyroX /1000.;
-  _rotation[2] = rawGyroX /1000.;
+  _rotation[0] = rawGyroX *4.375/1000. - rotation_offset[0];
+  _rotation[1] = rawGyroY *4.375/1000. - rotation_offset[1];
+  _rotation[2] = rawGyroZ *4.375/1000. - rotation_offset[2];
 }
 
 bool get_acceleration(float *_acceleration){
   byte buffer[6];
-  bool response = i2c_read(buffer,OUTX_L_A,6);
+  bool response = i2c_read(IMU_ADDR,buffer,OUTX_L_A,6);
 
   int16_t rawAccelX,rawAccelY,rawAccelZ;
   
@@ -93,7 +128,7 @@ bool get_acceleration(float *_acceleration){
 
 void get_temperature(float *_temperature){
   byte buffer[2];
-  i2c_read(buffer,OUT_TEMP_L,2);
+  i2c_read(IMU_ADDR,buffer,OUT_TEMP_L,2);
 
   int16_t rawTemp;
   
@@ -102,12 +137,28 @@ void get_temperature(float *_temperature){
   temperature[0] = (rawTemp/256.)+25.;
 }
 
+void zero_gyro_bias(){
+  double rx,ry,rz;
+  for(uint16_t i = 0; i < 500; i++){
+    get_rotation(rotation);
+    rx += rotation[0];
+    ry += rotation[1];
+    rz += rotation[2];
+    
+    delay(15);
+  }
+
+  rotation_offset[0] = rx/500;
+  rotation_offset[1] = ry/500;
+  rotation_offset[2] = rz/500;
+}
+
 void set_gyro_params(data_rate _rate, gyro_range _range){
   byte buffer[2];
   
   buffer[0] = CTRL2_G;
   buffer[1] = _rate | _range;
-  i2c_write(buffer,2);
+  i2c_write(IMU_ADDR,buffer,2);
 }
 
 void set_accel_params(data_rate _rate, accel_range _range){
@@ -115,7 +166,7 @@ void set_accel_params(data_rate _rate, accel_range _range){
   
   buffer[0] = CTRL1_XL;
   buffer[1] = _rate | _range;
-  i2c_write(buffer,2);
+  i2c_write(IMU_ADDR,buffer,2);
 }
 
 void setup() {
@@ -132,15 +183,21 @@ void _init(){
   // Enable Accelerometer with 12.5 Hz ODR, +/- 2g sensitivity
   set_accel_params(RATE_12_5_HZ,ACCEL_RANGE_2_G);
   
-  // Enable GyroScope with 12.5 Hz ODR, +/- 125 dps sensitivity
-  set_gyro_params(RATE_12_5_HZ,GYRO_RANGE_125_DPS);
+  // Enable GyroScope with 104 Hz ODR, +/- 125 dps sensitivity
+  set_gyro_params(RATE_104_HZ,GYRO_RANGE_125_DPS);
+
+  //zero_gyro_bias();
   
-  i2c_read(check_byte,CTRL1_XL);
+  i2c_read(IMU_ADDR,check_byte,CTRL1_XL);
   Serial.print("CTRL1_XL: ");
   Serial.println(*check_byte);
   
-  i2c_read(check_byte,CTRL2_G);
+  i2c_read(IMU_ADDR,check_byte,CTRL2_G);
   Serial.print("CTRL2_G: ");
+  Serial.println(*check_byte);
+
+  i2c_read(MAG_ADDR,check_byte,WHO_AM_I_MAG);
+  Serial.print("WHO AM I MAG: ");
   Serial.println(*check_byte);
   
   delay(2000);
@@ -148,9 +205,6 @@ void _init(){
 
 
 void loop() {
-  byte a[1];
-  i2c_read(a,OUTX_L_A);
-  //Serial.println(a[0]);
   
   get_acceleration(acceleration);
   Serial.print("Accel: ");
@@ -158,10 +212,35 @@ void loop() {
   Serial.print(" ");
   Serial.print(acceleration[1]);
   Serial.print(" ");
-  Serial.println(acceleration[2]);
+  Serial.print(acceleration[2]);
+  Serial.print(" ");
+  Serial.println(sqrt(sq(acceleration[0])+sq(acceleration[1])+sq(acceleration[2])));
+
+  get_rotation(rotation);
+  Serial.print("rotation: ");
+  Serial.print(rotation[0]);
+  Serial.print(" ");
+  Serial.print(rotation[1]);
+  Serial.print(" ");
+  Serial.print(rotation[2]);
+  Serial.print(" ");
+  Serial.println(sqrt(sq(rotation[0])+sq(rotation[1])+sq(rotation[2])));
+
+  get_mag(mag);
+  Serial.print("Magnetic Field: ");
+  Serial.print(mag[0]);
+  Serial.print(" ");
+  Serial.print(mag[1]);
+  Serial.print(" ");
+  Serial.print(mag[2]);
+  Serial.print(" ");
+  Serial.println(sqrt(sq(mag[0])+sq(mag[1])+sq(mag[2])));
 
   get_temperature(temperature);
   Serial.print("Temp: ");
   Serial.println(temperature[0]);
+
+  
+  Serial.println();
   delay(1000);
 }
