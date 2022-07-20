@@ -1,8 +1,9 @@
 #include <Wire.h>
 
 #define BAUD 115200             // Serial COM baudrate
+
 #define IMU_ADDR 0x6A           // IMU Chip I2C Address
-#define MAG_ADDR 0x1C            // Magnetometer Chip I2C Address
+#define MAG_ADDR 0x1C           // Magnetometer Chip I2C Address
 
 #define EARTH_GRAVITY 9.80665F  // m/s^2 [standard value (defined)]
 
