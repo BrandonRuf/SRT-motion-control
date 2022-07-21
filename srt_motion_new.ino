@@ -8,15 +8,17 @@
 #define EARTH_GRAVITY 9.80665F  // m/s^2 [standard value (defined)]
 
 //** IMU Register definitions **//
-#define CTRL1_XL  0x10  // Accelerometer control register 1 (r/w)
-#define CTRL2_G   0x11  // Gyroscope control register 2     (r/w)
+#define CTRL1_XL  0x10  // Accelerometer control register (r/w)
+#define CTRL2_G   0x11  // Gyroscope control register     (r/w)
 #define CTRL3_C   0x12  // Control register 3 (r/w)
 #define CTRL4_C   0x13  // Control register 4 (r/w)
 #define CTRL5_C   0x14  // Control register 5 (r/w)
 #define CTRL6_C   0x15  // Control register 6 (r/w)
 #define CTRL7_G   0x16  // Control register 7 (r/w)
 #define CTRL8_XL  0x17  // Control register 8 (r/w)
-#define WHO_AM_I  0x0f  // Chip ID register   (r)
+
+#define WHO_AM_I   0x0f  // Chip ID register  (r)
+#define STATUS_REG 0x1E  //                   (r)
 
 #define OUT_TEMP_L 0x20 // Temperature data output register (r)
 
@@ -29,9 +31,18 @@
 #define OUTZ_L_A   0x2C // Linear acceleration sensor Z-axis output register (r)
 
 //** MAGNETOMETER Register definitions **//
-#define OUT_X_L 0x28
-#define OUT_Y_L 0x2A
-#define OUT_Z_L 0x2C
+#define CTRL_REG1 0x20
+#define CTRL_REG2 0x21
+#define CTRL_REG3 0x22
+#define CTRL_REG4 0x23
+#define CTRL_REG5 0x24
+
+#define MAG_STATUS_REG 0x27
+
+
+#define OUT_X_L   0x28
+#define OUT_Y_L   0x2A
+#define OUT_Z_L   0x2C
 
 #define WHO_AM_I_MAG 0x0F
 
@@ -62,7 +73,7 @@ typedef enum{
   ACCEL_RANGE_8_G  = 0b1100
 } accel_range;
 
-/* Sensor data rates */
+/* Motion sensor data rates */
 typedef enum{
   RATE_OFF      = 0b00000000,
   RATE_12_5_HZ  = 0b00010000,
@@ -77,15 +88,46 @@ typedef enum{
   RATE_6_66K_HZ = 0b10100000,
 } data_rate;
 
+/* Magnetometer data rates */
+typedef enum{
+  RATE_0_6_25_HZ  = 0b01100000,
+  RATE_1_25_HZ    = 0b01100100,
+  RATE_2_5_HZ     = 0b01101000,
+  RATE_5_HZ       = 0b01101100,
+  RATE_10_HZ      = 0b01110000,
+  RATE_20_HZ      = 0b01110100,
+  RATE_40_HZ      = 0b01111000,
+  RATE_80_HZ      = 0b01111100,
+  RATE_155_HZ     = 0b01100010,
+  RATE_300_HZ     = 0b01100010,
+  RATE_560_HZ     = 0b01100010,
+  RATE_1K_HZ      = 0b10100010,
+} mag_data_rate;
+
+/* Magnetometer data range */
+typedef enum{
+  MAG_RANGE_4_GAUSS  = 0b00000000,
+  MAG_RANGE_8_GAUSS  = 0b00100000,
+  MAG_RANGE_12_GAUSS = 0b01000000,
+  MAG_RANGE_16_GAUSS = 0b01100000
+} mag_range;
+
+
 float acceleration[3],rotation[3],mag[3],temperature[1];
 float rotation_offset[3] = {0.,0.,0.};
+
+int16_t combine_8_to_16(uint8_t *a){
+  int16_t b = a[1] << 8 | a[0];
+  return b;
+}
 
 bool get_mag(float *_mag){
   byte buffer[6];
   i2c_read(MAG_ADDR,buffer,OUT_X_L,6);
 
   int16_t rawMagX,rawMagY,rawMagZ;
-  
+
+  // Combine two 8-bit register's data into 16-bit value
   rawMagX = buffer[1] << 8 | buffer[0];
   rawMagY = buffer[3] << 8 | buffer[2];
   rawMagZ = buffer[5] << 8 | buffer[4];
@@ -100,14 +142,15 @@ bool get_rotation(float *_rotation){
   i2c_read(IMU_ADDR,buffer,OUTX_L_G,6);
 
   int16_t rawGyroX,rawGyroY,rawGyroZ;
-  
+
+  // Combine two 8-bit register's data into 16-bit value
   rawGyroX = buffer[1] << 8 | buffer[0];
   rawGyroY = buffer[3] << 8 | buffer[2];
   rawGyroZ = buffer[5] << 8 | buffer[4];
 
-  _rotation[0] = rawGyroX *4.375/1000. - rotation_offset[0];
-  _rotation[1] = rawGyroY *4.375/1000. - rotation_offset[1];
-  _rotation[2] = rawGyroZ *4.375/1000. - rotation_offset[2];
+  _rotation[0] = rawGyroX *4.375/1000.;
+  _rotation[1] = rawGyroY *4.375/1000.;
+  _rotation[2] = rawGyroZ *4.375/1000.;
 }
 
 bool get_acceleration(float *_acceleration){
@@ -139,23 +182,42 @@ void get_temperature(float *_temperature){
 }
 
 void zero_gyro_bias(){
-  double rx,ry,rz;
+  float rx,ry,rz;
+  rx = 0;
+  ry = 0;
+  rz = 0;
+
   for(uint16_t i = 0; i < 500; i++){
     get_rotation(rotation);
     rx += rotation[0];
     ry += rotation[1];
     rz += rotation[2];
-    
     delay(15);
+    
+    Serial.print(rx);
+    Serial.print(" ");
+    Serial.print(ry);
+    Serial.print(" ");
+    Serial.println(rz);
   }
 
-  rotation_offset[0] = rx/500;
-  rotation_offset[1] = ry/500;
-  rotation_offset[2] = rz/500;
+  delay(5000);
+  rotation_offset[0] = rx/500.;
+  rotation_offset[1] = ry/500.;
+  rotation_offset[2] = rz/500.;
+
+  Serial.print("Rotation offset: ");
+  Serial.print(rotation_offset[0]);
+  Serial.print(" ");
+  Serial.print(rotation_offset[1]);
+  Serial.print(" ");
+  Serial.println(rotation_offset[2]);
+
+  
 }
 
 void set_gyro_params(data_rate _rate, gyro_range _range){
-  byte buffer[2];
+  uint8_t buffer[2];
   
   buffer[0] = CTRL2_G;
   buffer[1] = _rate | _range;
@@ -163,13 +225,24 @@ void set_gyro_params(data_rate _rate, gyro_range _range){
 }
 
 void set_accel_params(data_rate _rate, accel_range _range){
-  byte buffer[2];
+  uint8_t buffer[2];
   
   buffer[0] = CTRL1_XL;
   buffer[1] = _rate | _range;
   i2c_write(IMU_ADDR,buffer,2);
 }
 
+void set_mag_params(mag_data_rate _rate, mag_range _range){
+  uint8_t buffer[2];
+
+  buffer[0] = CTRL_REG1;
+  buffer[1] = _rate;
+  i2c_write(MAG_ADDR,buffer,2);
+
+  buffer[0] = CTRL_REG2;
+  buffer[1] = _range;
+  i2c_write(MAG_ADDR,buffer,2);
+}
 void setup() {
   Serial.begin(BAUD); 
   Wire  .begin();        // Start I2C library      
@@ -181,13 +254,25 @@ void _init(){
   byte buffer[2];
   byte check_byte[1];
 
+  buffer[0] = CTRL_REG3;
+  buffer[1] = 0b00000000;
+  i2c_write(MAG_ADDR,buffer,2);
+
+  buffer[0] = CTRL_REG4;
+  buffer[1] = 0b00001100;
+  i2c_write(MAG_ADDR,buffer,2);
+  
+
   // Enable Accelerometer with 12.5 Hz ODR, +/- 2g sensitivity
   set_accel_params(RATE_12_5_HZ,ACCEL_RANGE_2_G);
   
   // Enable GyroScope with 104 Hz ODR, +/- 125 dps sensitivity
   set_gyro_params(RATE_104_HZ,GYRO_RANGE_125_DPS);
 
-  //zero_gyro_bias();
+  // Enable Magnetometer with 80 Hz ODR, +/- 4 Gauss sensitivity
+  set_mag_params(RATE_80_HZ,MAG_RANGE_4_GAUSS);
+
+  zero_gyro_bias();
   
   i2c_read(IMU_ADDR,check_byte,CTRL1_XL);
   Serial.print("CTRL1_XL: ");
@@ -243,5 +328,5 @@ void loop() {
 
   
   Serial.println();
-  delay(1000);
+  delay(3000);
 }
